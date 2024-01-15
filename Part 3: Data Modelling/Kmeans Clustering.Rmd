@@ -1,0 +1,104 @@
+
+---
+title: "Kmeans Clustering"
+output:
+  html_document: default
+  pdf_document: default
+---
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r load-libraries, echo=TRUE, message=FALSE, warning=FALSE}
+# load required packages
+library(dplyr)
+library(rcompanion)
+library(readxl)
+library(tidyr)
+library(ggplot2) 
+library(dplyr) 
+library(RColorBrewer)
+library(knitr)
+library(png)
+
+library(animation)
+library(gifski)
+library(table1)
+library(corrplot)
+library(xtable)
+library(car)
+library(DT)
+
+library(AER)    
+library(plm)  
+library(stargazer)
+library(lattice)
+
+library(GGally)
+library(standardize)
+library(tidyverse)
+library(factoextra)
+
+library("lmtest")
+library("sandwich")
+library("nnet")
+
+library(NbClust)
+library(ggmap)
+library(openxlsx)
+library(factoextra)
+library(readxl)
+```
+
+# K-means
+
+-   Dataset required: `games_stats_FINAL.csv`
+
+
+```{r read-dataset, echo=TRUE}
+
+#read games_stats dataset 
+
+games_stat = read.csv(file = 'games_stats_FINAL.csv', header= TRUE)
+game_data <- games_stat
+head(game_data)
+```
+```{r}
+game_data
+```
+
+# Finding Elbow graph
+
+```{r}
+X <- game_data$Total_owners
+```
+```{r}
+wss <- function(k) {
+  kmeans(X, k, nstart = 10 )$tot.withinss
+}
+# Compute and plot wss for k = 1 to k = 15
+k.values <- 1:10
+
+# extract wss for 2-15 clusters
+wss_values <- map_dbl(k.values, wss)
+
+plot(k.values, wss_values,
+       type="b", pch = 19, frame = FALSE, 
+       xlab="Number of clusters K",
+       ylab="Total within-clusters sum of squares")
+```
+```{r}
+KM <- kmeans(X, centers = 3, iter.max = 10, nstart = 10)
+```
+
+
+```{r}
+KM$cluster 
+```
+```{r}
+game_data$Total_cat_owner = KM$cluster
+```
+
+```{r}
+write.csv(game_data,"Total_Owners_Clustering.csv")
+```

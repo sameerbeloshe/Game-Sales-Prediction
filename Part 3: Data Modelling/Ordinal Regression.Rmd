@@ -1,0 +1,229 @@
+---
+title: "project_ordinalregression"
+output:
+  html_document: default
+  pdf_document: default
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r}
+library(dplyr) 
+require(foreign)
+require(ggplot2)
+require(MASS)
+require(Hmisc)
+require(reshape2)
+library(datasets)
+library(caret)
+library(pROC)
+
+library(AER)    # applied econometrics with R
+library(plm)    # panel-lm
+library(stargazer)      # popular package for regression table-making
+library(lattice)
+
+library(GGally)
+library(standardize)
+library(QuantPsyc)
+
+library(tidyverse)
+library(factoextra)
+
+library("lmtest")
+library("sandwich")
+library("nnet")
+
+library(Matrix)
+library(MASS)
+library(brant)
+```
+
+
+## Load data
+
+
+```{r}
+#read games dataset 
+#games_stat = read.csv(file = 'games_stats_150000.csv', header= TRUE)
+games_stat = read.csv(file = 'games_stats_analysis.csv', header= TRUE)
+head(games_stat)
+```
+
+
+```{r}
+# Column names of dataset
+colnames(games_stat)
+```
+```{r}
+
+games_stat_t <- games_stat %>%
+  rename(owner_cat =total_owner_cat, user_age=required_age, lang = languages_supported, cat_count = categories_count, action = genre_action, anime = genre_animation___modeling, game_dev= genre_game_development ,multiP=  genre_massively_multiplayer, sexual = genre_sexual_content,sports= genre_sports, violent =genre_violent, mac=Mac_platform,win=Window_platform,race =  genre_racing,  free=genre_free_to_play, adventure=genre_adventure, linux=Linux_platform, design =genre_design___illustration,casual =  genre_casual, indie=genre_indie)
+
+
+
+game_regression <-
+ games_stat_t %>% dplyr::select(owner_cat,lang, anime, design,game_dev, multiP, sexual, sports, violent, action, race, adventure, casual,free,mac,win,  linux,cat_count, genre_count, user_age, age, custom_user_score, is_free, initialprice, controller_support,indie)
+```
+
+```{r}
+str(game_regression)
+```
+
+
+
+```{r}
+game_regression$owner_cat  <- as.ordered(game_regression$owner_cat ) 
+
+str(game_regression)
+
+```
+
+```{r}
+summary(game_regression$owner_cat)
+```
+
+
+```{r}
+games_regression_model <- game_regression %>% dplyr::select(c(anime,design,game_dev,sexual,sports,violent,race,adventure,win,initialprice,controller_support,owner_cat))
+```
+
+
+```{r}
+## fit ordered logit model and store results
+
+
+
+
+model <- polr(owner_cat ~ ., data = games_regression_model, Hess=TRUE)
+
+
+## view a summary of the model
+summary(model)
+```
+
+
+
+```{r}
+pred_data<- predict(model,games_regression_model)
+```
+
+
+```{r}
+(tab_full <- table(pred_data, games_regression_model$owner_cat))
+```
+
+```{r}
+1 - sum(diag(tab_full))/sum(tab_full)
+```
+
+
+
+```{r}
+(ctable <- coef(summary(model)))
+```
+```{r}
+## calculate and store p values
+p <- pnorm(abs(ctable[, "t value"]), lower.tail = FALSE) * 2
+
+## combined table
+(ctable <- cbind(ctable, "p value" = p))
+```
+
+# Ordinal Logistic Regression Assumptions
+
+Since the Ordinal Logistic Regression model has been fitted, now we need to check the assumptions to ensure that it is a valid model. The assumptions of the Ordinal Logistic Regression are as follow and should be tested in order:
+
+* The dependent variable are ordered.
+  We have selected number of owners as our dependent variable. It has been categorized into 3 levels namely 0 (10000 to 75000), 1(150000 to 750000) and 2(1500000 to 150000000) with 0<1<2.
+
+* One or more of the independent variables are either continuous, categorical or ordinal.
+  We have selected following varaibles as our independednt variable. 
+  
+* No multi-collinearity.
+
+
+
+* Proportional odds
+```{r}
+
+brant::brant(model)
+```
+
+
+# Test
+
+### Split dataset to train and test
+
+```{r}
+ind <- sample(2, nrow(games_regression_model), replace=TRUE, prob=c(0.8,0.2))
+train <- games_regression_model[ind==1,]
+test <- games_regression_model[ind==2,]
+```
+### Train model with train data
+
+```{r}
+
+#train$owner_cat <- as.integer(train$owner_cat)
+
+model_train <- polr(owner_cat ~ ., data = train, Hess=TRUE)
+
+```
+
+```{r}
+pred_train<- predict(model_train,train)
+```
+
+```{r}
+(tab_train <- table(pred_train, train$owner_cat))
+```
+```{r}
+1 - sum(diag(tab_train))/sum(tab_train)
+```
+
+
+### Predict
+
+```{r}
+pred<- predict(model_train,test)
+```
+
+### Confusion Metrics
+
+```{r}
+(tab_test <- table(pred, test$owner_cat))
+```
+
+### Misclassification Error
+
+```{r}
+1 - sum(diag(tab_test))/sum(tab_test)
+```
+
+### Metrics
+
+```{r}
+cm <- as.matrix(confusionMatrix(pred, test$owner_cat))
+n = sum(cm) # number of instances
+nc = nrow(cm) # number of classes
+rowsums = apply(cm, 1, sum) # number of instances per class
+colsums = apply(cm, 2, sum) # number of predictions per class
+diag = diag(cm)  # number of correctly classified instances per class 
+
+precision = diag / colsums 
+recall = diag / rowsums 
+f1 = 2 * precision * recall / (precision + recall)
+```
+
+```{r}
+print(" ************ Confusion Matrix ************")
+print(cm)
+print(" ************ Diag ************")
+print(diag)
+print(" ************ Precision/Recall/F1 ************")
+print(data.frame(precision, recall, f1))
+
+```
+

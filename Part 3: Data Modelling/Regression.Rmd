@@ -1,0 +1,296 @@
+---
+title: "Group 17 Team Project"
+output:
+  html_document: default
+  pdf_document: default
+---
+
+IS5126 Hands-on with Applied Analytics - Team 17
+
+Aniket Udaykumar
+
+Niranjana Anand Unnithan
+
+Reshma Vijay Jawale
+
+Varsha Singh
+
+Vidhu Verma
+
+April 25th, 2022
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## Preparation
+```{r message=FALSE}
+library(dplyr) 
+require(foreign)
+require(ggplot2)
+require(MASS)
+require(Hmisc)
+require(reshape2)
+library(datasets)
+library(caret)
+library(pROC)
+
+library(AER)    
+library(plm)   
+library(stargazer)     
+library(lattice)
+
+library(GGally)
+library(standardize)
+
+library(tidyverse)
+library(factoextra)
+
+library("lmtest")
+library("sandwich")
+library("nnet")
+
+library(Matrix)
+library(MASS)
+library(brant)
+```
+
+
+# Load data
+
+
+```{r}
+#read games dataset 
+games_stat = read.csv(file = 'games_stats_analysis.csv', header= TRUE)
+head(games_stat)
+```
+
+
+```{r}
+# Column names of dataset
+colnames(games_stat)
+```
+
+```{r}
+
+games_stat_t <- games_stat %>%
+  rename(owner_cat =total_owner_cat, user_age=required_age, lang = languages_supported, cat_count = categories_count, action = genre_action, anime = genre_animation___modeling, game_dev= genre_game_development ,multiP=  genre_massively_multiplayer, sexual = genre_sexual_content,sports= genre_sports, violent =genre_violent, mac=Mac_platform,win=Window_platform,race =  genre_racing,  free=genre_free_to_play, adventure=genre_adventure, linux=Linux_platform, design =genre_design___illustration,casual =  genre_casual, indie=genre_indie)
+
+
+
+game_regression <-
+ games_stat_t %>% dplyr::select(owner_cat,lang, anime, design,game_dev, multiP, sexual, sports, violent, action, race, adventure, casual,free,mac,win,  linux,cat_count, genre_count, user_age, age, custom_user_score, is_free, initialprice, controller_support,indie)
+```
+
+```{r}
+str(game_regression)
+```
+
+Since we are performing ordinal regression, the dependent variables need to be ordered and categorical in nature. Here, we make the variable owner_cat ordered with the natural ordering 0 (less popular)< 1 (medium popular) < 2(highly popular)
+
+```{r}
+# Convert dependent variable to ordered form
+game_regression$owner_cat  <- as.ordered(game_regression$owner_cat ) 
+
+str(game_regression)
+```
+
+```{r}
+summary(game_regression$owner_cat)
+```
+The above table shows the class distribution of the dependent variable owner_cat (Owner category). It is observed that the category with least number of owners have the highest number of video games while the category with large number of owners are under represented.
+
+```{r}
+games_regression_model <- game_regression %>% dplyr::select(c(anime,design,game_dev,sexual,sports,violent,race,adventure,win,initialprice,controller_support,owner_cat))
+```
+
+
+# Ordinal Regression
+
+From our analysis, we have selected the following variables as independent variables:
+
+1) anime (genre)
+
+2) design (genre)
+
+3) game_dev (genre)
+
+4) sexual (genre)
+
+5) genre sports (genre)
+
+6) genre violent (genre)
+
+7) genre race (genre)
+
+8) genre adventure (genre)
+
+9) win (Support for windows os)
+
+10) initialprice
+
+11) controller support (controller_support) 
+
+Owner Category is the dependent variable. An ordinal regression model is fitted using polr function is fitted between the independent and dependent variables.
+
+
+### Fitting the model
+```{r}
+# fit ordered logit model and store results
+model <- polr(owner_cat ~ ., data = games_regression_model, Hess=TRUE)
+
+
+# view a summary of the model
+summary(model)
+```
+
+
+### Prediction on entire dataset
+```{r}
+# Prediction
+pred_data<- predict(model,games_regression_model)
+```
+
+
+
+### Confusion matrix on entire dataset
+```{r}
+# Confusion matrix for train data
+(tab_full <- table(pred_data, games_regression_model$owner_cat))
+```
+
+
+### Misclassification error on entire dataset
+```{r}
+# Misclassification error for train data
+1 - sum(diag(tab_full))/sum(tab_full)
+```
+
+
+```{r}
+(ctable <- coef(summary(model)))
+```
+
+### p values
+
+polr function does not return the p values. Hence we calculate the p values by comparing the t-value against the standard normal distribution. This is only true with infinite degrees of freedom, but is reasonably approximated by large samples, becoming increasingly biased as sample size decreases.
+
+```{r}
+## calculate and store p values
+p <- pnorm(abs(ctable[, "t value"]), lower.tail = FALSE) * 2
+
+## combined table
+(ctable <- cbind(ctable, "p value" = p))
+```
+
+From the p values, it can be observed that variables like genre sexual, genre adventure, genre race, windows os support, initial price and controller support are statistically significant as it is less that conventionally accepted alpha value of 0.5. Since there is at least one variable that is statistically significant, the null hypothesis (H0) is rejected and the alternative hypothesis (H1) is accepted
+
+Interpretation of categorical variable: The significant categorical variables like the Windows platform can be interpreted as any video game  that runs on the Windows platform is associated with a higher likelihood of having more owners as opposed to non-windows platforms
+
+Interpretation of continuous variable: the significant continuous variable initial price can be interpreted as: with one unit increase in initial price the log of odds of having a higher number of users increases by 0.02 keeping all other variables const.
+
+
+
+
+
+# Ordinal Logistic Regression Assumptions
+
+Since the Ordinal Logistic Regression model has been fitted, now we need to check the assumptions to ensure that it is a valid model. The assumptions of the Ordinal Logistic Regression are as follow and should be tested in order:
+
+* The dependent variable are ordered.
+  We have selected number of owners as our dependent variable. It has been categorized into 3 levels namely 0 (10000 to 75000), 1(150000 to 750000) and 2(1500000 to 150000000) with 0<1<2.
+
+* One or more of the independent variables are either continuous, categorical or ordinal.
+  We have selected following varaibles as our independednt variable. 
+  
+* No multi-collinearity.
+
+* Proportional odds
+
+### Brant test for proportionality odds assumption
+
+This assumption means that the relationship between each pair of outcome groups has to be the same. If the relationship between all pairs of groups is the same, then there is only one set of coefficients, which means that there is only one model. If this assumption is violated, different models are needed to describe the relationship between each pair of outcome groups.
+
+```{r}
+# Brant test for proportionality odds
+brant::brant(model)
+```
+
+From the above results, we discovered that the parallel assumption holds true because the p-values for all variables are greater than alpha (0.05). There is also an Omnibus variable in the result, which effectively stands for the entire model and is greater than 0.05. As a result, the proportional odds assumption is upheld, and the model is valid for this dataset.
+
+
+# Test
+
+### Split dataset to train and test
+
+Since the assumptions of ordinal regressions hold and the null hypothesis is rejected, we can use the above model to classify video games into 3 categories based on their popularity(number of owners). For this, the dataset is divided into train and test data in the ration 80:20. The model is first fitted with train data and classification is done on the test data. We also calculate F1 score, recall and precision of each of the classes to evaluate the model.
+
+```{r}
+ind <- sample(2, nrow(games_regression_model), replace=TRUE, prob=c(0.8,0.2))
+train <- games_regression_model[ind==1,]
+test <- games_regression_model[ind==2,]
+```
+### Train model with train data
+
+```{r}
+model_train <- polr(owner_cat ~ ., data = train, Hess=TRUE)
+
+```
+
+```{r}
+pred_train<- predict(model_train,train)
+```
+
+```{r}
+(tab_train <- table(pred_train, train$owner_cat))
+```
+```{r}
+1 - sum(diag(tab_train))/sum(tab_train)
+```
+
+
+### Prediction
+
+```{r}
+pred<- predict(model_train,test)
+```
+
+### Confusion Metrics for test data
+
+```{r}
+(tab_test <- table(pred, test$owner_cat))
+```
+
+### Misclassification Error for test data
+
+```{r}
+1 - sum(diag(tab_test))/sum(tab_test)
+```
+The misclassification error on test dataset is 40% which is similar to that on train dataset. We may conclude that the model's behavior is consistent because the misclassification error is roughly the same in both the training and test datasets.
+
+### Evaluation Metrics for Test Data
+
+```{r}
+cm <- as.matrix(confusionMatrix(pred, test$owner_cat))
+n = sum(cm) # number of instances
+nc = nrow(cm) # number of classes
+rowsums = apply(cm, 1, sum) # number of instances per class
+colsums = apply(cm, 2, sum) # number of predictions per class
+diag = diag(cm)  # number of correctly classified instances per class 
+
+precision = diag / colsums 
+recall = diag / rowsums 
+f1 = 2 * precision * recall / (precision + recall)
+```
+
+```{r}
+print(" ************ Confusion Matrix ************")
+print(cm)
+print(" ************ Diag ************")
+print(diag)
+print(" ************ Precision/Recall/F1 ************")
+print(data.frame(precision, recall, f1))
+
+```
+ From the above table, it can be observed that the classifier is able to classify to classes 0 and 1 but not class 2. This can be explained due to the class imbalance that is evident in the dataset. Compared to classes 0 and 1, video games in class 2 ( highly popular) are under represented.
+
